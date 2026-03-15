@@ -1,14 +1,10 @@
----
 agent: backend
-task: |
-  1. Expand AGENT_ROLES in orch.py.
-  2. Add 'tree' and 'compress' commands to orch.py.
+task: Add clipboard support to both tree_command() and compress_command() in orch.py.
 status: done
 summary: |
-  Expanded AGENT_ROLES with detailed senior-level descriptions (Mindset, Responsibilities, Avoid, Commit style).
-  Implemented 'tree' command to display project structure, recent commits, and changed files.
-  Implemented 'compress' command to create a context snapshot in .tasks/context-snapshot.md.
-  Added 'subprocess' import for git commands and updated main() routing.
+  Refactored print_tree() into get_tree_str() to return a string for capture.
+  Implemented copy_to_clipboard() using pbcopy (macOS), clip (Windows), or xclip/xsel (Linux).
+  Updated tree_command() and compress_command() to copy their output to the clipboard.
+  Added platform-specific clipboard support using only the standard library.
 files_changed:
   - orch.py
----

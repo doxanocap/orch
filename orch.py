@@ -51,10 +51,30 @@ def run_git_cmd(cmd):
     except Exception as e:
         return f"Error: {e}"
 
-def print_tree(path, prefix="", exclude=None):
+def copy_to_clipboard(text: str):
+    """Copies text to clipboard using platform-specific commands (stdlib only)."""
+    try:
+        if sys.platform == "darwin":
+            cmd = ["pbcopy"]
+        elif sys.platform == "win32":
+            cmd = ["clip"]
+        else: # Linux and others
+            # Try xclip first, then xsel
+            try:
+                subprocess.run(["xclip", "-version"], capture_output=True, check=True)
+                cmd = ["xclip", "-selection", "clipboard"]
+            except (subprocess.CalledProcessError, FileNotFoundError):
+                cmd = ["xsel", "--clipboard", "--input"]
+        
+        subprocess.run(cmd, input=text, text=True, check=True)
+    except Exception as e:
+        print(f"⚠️  Warning: Failed to copy to clipboard: {e}")
+
+def get_tree_str(path, prefix="", exclude=None):
     if exclude is None:
         exclude = {".git", "__pycache__", "node_modules", ".antigravity"}
     
+    output = []
     entries = sorted(os.listdir(path))
     for i, entry in enumerate(entries):
         if entry in exclude:
@@ -64,21 +84,31 @@ def print_tree(path, prefix="", exclude=None):
         is_last = (i == len(entries) - 1)
         connector = "└── " if is_last else "├── "
         
-        print(f"{prefix}{connector}{entry}")
+        output.append(f"{prefix}{connector}{entry}")
         
         if os.path.isdir(full_path):
             new_prefix = prefix + ("    " if is_last else "│   ")
-            print_tree(full_path, new_prefix, exclude)
+            output.append(get_tree_str(full_path, new_prefix, exclude))
+    
+    return "\n".join(output)
 
 def tree_command():
-    print("\n📂 PROJECT STRUCTURE:")
-    print_tree(".")
+    output_parts = []
     
-    print("\n📜 RECENT COMMITS:")
-    print(run_git_cmd(["git", "log", "--oneline", "-5"]))
+    output_parts.append("\n📂 PROJECT STRUCTURE:")
+    output_parts.append(get_tree_str("."))
     
-    print("\ndiff LAST COMMIT:")
-    print(run_git_cmd(["git", "diff", "--name-only", "HEAD~1", "HEAD"]))
+    output_parts.append("\n📜 RECENT COMMITS:")
+    output_parts.append(run_git_cmd(["git", "log", "--oneline", "-5"]))
+    
+    output_parts.append("\ndiff LAST COMMIT:")
+    output_parts.append(run_git_cmd(["git", "diff", "--name-only", "HEAD~1", "HEAD"]))
+    
+    full_output = "\n".join(output_parts)
+    print(full_output)
+    
+    copy_to_clipboard(full_output)
+    print("📋 Copied to clipboard")
 
 def compress_command():
     if anthropic is None:
@@ -153,6 +183,9 @@ RECENTLY COMPLETED TASKS:
     print(final_output)
     print("━" * 40)
     print(f"✅ Saved to {snapshot_file}")
+    
+    copy_to_clipboard(final_output)
+    print("📋 Copied to clipboard")
 
 def init_project():
     name = input("Project name: ").strip()
