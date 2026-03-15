@@ -4,7 +4,13 @@ import datetime
 import subprocess
 from pathlib import Path
 
+try:
+    import anthropic
+except ImportError:
+    anthropic = None
+
 AGENT_ROLES = {
+# ... (rest of AGENT_ROLES remains the same, I'll use multi_replace for accuracy in a real scenario, but here I'm replacing the whole top and middle part)
     "frontend": """Mindset: User-first, performance-conscious, and aesthetic-driven.
 Responsibilities: Building responsive UIs, managing client-side state, ensuring accessibility, and implementing design systems.
 Avoid: Messy CSS, blocking the main thread, ignoring edge cases in UI state, and bypassing linting rules.
@@ -75,25 +81,78 @@ def tree_command():
     print(run_git_cmd(["git", "diff", "--name-only", "HEAD~1", "HEAD"]))
 
 def compress_command():
-    arch_path = Path("ARCHITECTURE.md")
-    arch_content = arch_path.read_text() if arch_path.exists() else "ARCHITECTURE.md not found"
+    if anthropic is None:
+        print("❌ Error: 'anthropic' package not installed. Run: pip install anthropic")
+        return
+
+    api_key = os.getenv("ANTHROPIC_API_KEY")
+    if not api_key or api_key.startswith("sk-ant-..."):
+        print("❌ Error: ANTHROPIC_API_KEY not found or invalid in .env")
+        return
+
+    print("⏳ Gathering context...")
     
+    # 1. ARCHITECTURE.md
+    arch_path = Path("ARCHITECTURE.md")
+    arch_content = arch_path.read_text() if arch_path.exists() else "No ARCHITECTURE.md found."
+    
+    # 2. Git Log
     git_log = run_git_cmd(["git", "log", "--oneline", "-20"])
     
-    timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    snapshot = f"""# Context Snapshot: {timestamp}
+    # 3. Git Diff
+    git_diff = run_git_cmd(["git", "diff", "HEAD~1", "HEAD"])
+    
+    # 4. Recent Tasks
+    done_tasks_path = Path(".tasks/done")
+    recent_tasks_content = ""
+    if done_tasks_path.exists():
+        task_files = sorted(done_tasks_path.glob("*.md"), reverse=True)[:5]
+        for f in task_files:
+            recent_tasks_content += f"\n--- Task: {f.name} ---\n{f.read_text()}\n"
+    else:
+        recent_tasks_content = "No completed tasks found."
 
-## Architecture Summary
+    full_context = f"""
+PROJECT ARCHITECTURE:
 {arch_content}
 
-## Recent Git History
+RECENT CHANGES (Git Log):
 {git_log}
+
+LAST COMMIT DIFF:
+{git_diff}
+
+RECENTLY COMPLETED TASKS:
+{recent_tasks_content}
 """
+
+    print("🧠 Sending context to Claude for summarization...")
+    try:
+        client = anthropic.Anthropic(api_key=api_key)
+        response = client.messages.create(
+            model="claude-opus-4-6",
+            max_tokens=2048,
+            system="You are a technical architect. Compress the provided project context into a dense, structured snapshot. Include: current state, recent changes, key decisions, what was built, and what's next. Focus on technical accuracy and brevity.",
+            messages=[{"role": "user", "content": full_context}]
+        )
+        snapshot_text = response.content[0].text
+    except Exception as e:
+        print(f"❌ API Error: {e}")
+        return
+
+    timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    header = f"# Project Context Snapshot: {timestamp}\n\n"
+    final_output = header + snapshot_text
     
     os.makedirs(".tasks", exist_ok=True)
     snapshot_file = Path(".tasks/context-snapshot.md")
-    snapshot_file.write_text(snapshot)
-    print(f"✅ Snapshot saved to {snapshot_file}")
+    snapshot_file.write_text(final_output)
+    
+    print("\n" + "━" * 40)
+    print("📁 CONTEXT SNAPSHOT:")
+    print(final_output)
+    print("━" * 40)
+    print(f"✅ Saved to {snapshot_file}")
 
 def init_project():
     name = input("Project name: ").strip()
