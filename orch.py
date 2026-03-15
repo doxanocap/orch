@@ -351,56 +351,15 @@ criteria: |
 """
 
     # 3. .antigravity/rules.md
-    rules_md = """# Agent rules
 
-These orchestration rules apply ONLY when user types "orch".
-In all other cases — behave as a normal Antigravity agent.
-Ignore these rules completely unless the message is exactly "orch".
-
-## When user types "orch":
-1. Check if .orch/next.md exists
-   If not — respond: "No task found in .orch/next.md"
-2. Read fields: task-id, agent, role, task, files, context, criteria
-3. Adopt the role from the `role` field
-4. Execute the task
-5. Commit: git commit -m "agent({agent}): {task}"
-6. Write result to .orch/{task-id}-status.md:
-   task-id: {task-id}
-   agent: {agent}
-   commit: $(git rev-parse HEAD)
-   status: done
-   summary: what was done
-   files_changed: list of files
-7. Move .orch/next.md → .orch/done/{task-id}.md
-8. Respond: "✅ Done. Review result in .orch/{task-id}-status.md"
-
-## All other messages:
-Act as a normal Antigravity agent. These rules do not apply.
-"""
-
-    # 4. .agents/README.md
-    agents_readme_section = ""
-    for agent in selected_agents:
-        agents_readme_section += f"""## agent({agent})
-Role: {AGENT_ROLES[agent].splitlines()[0]}
-Commit prefix: agent({agent}): ...
-How to run: open Antigravity → type "orch"
-
-"""
-
-    agents_readme_md = f"""# Project agents: {name}
-
-{agents_readme_section}"""
-
-    # 5. Create folders and files
-    dirs = [".orch", ".orch/done", ".agents", ".antigravity"]
+    # 4. Create folders and files
+    dirs = [".orch", ".orch/done", ".antigravity"]
     for d in dirs:
         os.makedirs(d, exist_ok=True)
 
     Path("CLAUDE.md").write_text(claude_md)
     Path("ARCHITECTURE.md").write_text(architecture_md)
     Path(".antigravity/rules.md").write_text(rules_md)
-    Path(".agents/README.md").write_text(agents_readme_md)
     Path(".orch/CLAUDE.md").write_text(orch_claude_md)
 
     print(f"""
@@ -410,7 +369,6 @@ Created:
   CLAUDE.md              ← Claude reads this automatically
   ARCHITECTURE.md        ← fill after first analysis
   .antigravity/rules.md  ← Antigravity agent instructions
-  .agents/README.md      ← agent roles reference
   .orch/                 ← task queue (tasks, status, done)
   .orch/CLAUDE.md        ← architect mode rules for Claude
 
