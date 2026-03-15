@@ -238,10 +238,27 @@ Claude must:
 Agents are responsible for implementation only.
 Human is the final authority over plan and code.
 
+## Review command
+When human says "review {task-id}":
+1. Read: .tasks/{task-id}-status.md
+2. Extract commit hash from the commit field
+3. Run: git show {commit}
+4. Run: git diff {commit}~1 {commit}
+5. Read: .tasks/done/{task-id}.md (original task)
+6. Compare what was asked vs what was done
+7. Respond with:
+
+## Review: {task-id}
+✅ What was done correctly
+❌ Issues found  
+⚠️ Deviations from original task
+📝 Next task recommendation
+
 ## Agents
 {agents_section}
 ## Task format (.tasks/next.md)
 ---
+task-id: {{unique task identifier}}
 agent: {{one of the agents}}
 role: {{full role description for the agent}}
 task: {{what to do}}
@@ -278,18 +295,19 @@ Ignore these rules completely unless the message is exactly "orch".
 ## When user types "orch":
 1. Check if .tasks/next.md exists
    If not — respond: "No task found in .tasks/next.md"
-2. Read fields: agent, role, task, files, context, criteria
+2. Read fields: task-id, agent, role, task, files, context, criteria
 3. Adopt the role from the `role` field
 4. Execute the task
 5. Commit: git commit -m "agent({agent}): {task}"
-6. Write result to .tasks/status.md:
+6. Write result to .tasks/{task-id}-status.md:
+   task-id: {task-id}
    agent: {agent}
-   task: {task}
+   commit: $(git rev-parse HEAD)
    status: done
    summary: what was done
    files_changed: list of files
-7. Move .tasks/next.md → .tasks/done/{timestamp}.md
-8. Respond: "✅ Done. Review result in .tasks/status.md"
+7. Move .tasks/next.md → .tasks/done/{task-id}.md
+8. Respond: "✅ Done. Review result in .tasks/{task-id}-status.md"
 
 ## All other messages:
 Act as a normal Antigravity agent. These rules do not apply.
