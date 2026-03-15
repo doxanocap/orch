@@ -295,6 +295,7 @@ Claude is in READ-ONLY mode for all code files.
    user explicitly says so
 4. If you feel urge to write code → STOP
    Write .orch/task-{name}.md instead
+5. NEVER use git push — only commit.
 
 ## When user asks anything code-related:
 → Write .orch/task-{name}.md
@@ -351,6 +352,33 @@ criteria: |
 """
 
     # 3. .antigravity/rules.md
+    rules_md = """# Agent rules
+
+These orchestration rules apply ONLY when user types "orch".
+In all other cases — behave as a normal Antigravity agent.
+Ignore these rules completely unless the message is exactly "orch".
+
+## When user types "orch":
+1. Check if .orch/next.md exists
+   If not — respond: "No task found in .orch/next.md"
+2. Read fields: task-id, agent, role, task, files, context, criteria
+3. Adopt the role from the `role` field
+4. Execute the task
+5. Commit: git commit -m "agent({agent}): {task}"
+   **Rule: NEVER use git push.**
+6. Write result to .orch/{task-id}-status.md:
+   task-id: {task-id}
+   agent: {agent}
+   commit: $(git rev-parse HEAD)
+   status: done
+   summary: what was done
+   files_changed: list of files
+7. Move .orch/next.md → .orch/done/{task-id}.md
+8. Respond: "✅ Done. Review result in .orch/{task-id}-status.md"
+
+## All other messages:
+Act as a normal Antigravity agent. These rules do not apply.
+"""
 
     # 4. Create folders and files
     dirs = [".orch", ".orch/done", ".antigravity"]
