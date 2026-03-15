@@ -213,7 +213,128 @@ def init_project():
         if not selected_agents:
             selected_agents = DEFAULT_AGENTS
 
-    # 1. ARCHITECTURE.md
+    # 1. CLAUDE.md
+    agents_section = ""
+    for agent in selected_agents:
+        agents_section += f"- agent({agent}): {AGENT_ROLES[agent].splitlines()[0]}\n"
+
+    claude_md = f"""# Project: {name}
+{description}
+
+## Stack
+{stack}
+
+## Workflow
+We are working in an AI-orchestrated development workflow.
+Claude acts as the architect and reviewer, not the primary
+code writer. Claude analyzes the project, maintains
+architectural consistency, and decomposes goals into clear
+tasks. These tasks are then implemented by specialized agents
+(Gemini agents in Antigravity) that act as execution workers.
+
+All work must follow a structured loop:
+1. Claude analyzes project context → proposes task plan
+2. Human reviews and approves or adjusts the plan
+3. Agent implements the task → modifies repository
+4. Claude reviews changes via git diff + repo state
+5. Human gives final approval → loop continues
+
+Claude must:
+- Write tasks to .orch/task-{{{{name}}}}.md (never in chat)
+- Read .orch/{{{{name}}}}-status.md automatically after agent finishes
+- Run git log --oneline -10 and git diff before every review
+- Identify which agent made changes by commit prefix
+
+Agents are responsible for implementation only.
+Human is the final authority over plan and code.
+
+## Review command
+When human says "review task-{{{{name}}}}":
+1. Read: .orch/{{{{name}}}}-status.md
+2. Extract commit hash from the commit field
+3. Run: git show {{commit}}
+4. Run: git diff {{commit}}~1 {{commit}}
+5. Read: .orch/done/task-{{{{name}}}}.md (original task)
+6. Compare what was asked vs what was done
+7. Respond with:
+
+## Review: task-{{{{name}}}}
+✅ What was done correctly
+❌ Issues found  
+⚠️ Deviations from original task
+📝 Next task recommendation
+
+## Agents
+{agents_section}
+## Task format (.orch/task-{{{{name}}}}.md)
+---
+task-id: {{{{name}}}}
+agent: {{one of the agents}}
+role: {{full role description for the agent}}
+task: {{what to do}}
+files: {{files to modify}}
+context: {{all context the agent needs}}
+criteria: {{definition of done}}
+---
+---
+"""
+
+    # 1.1 .orch/CLAUDE.md (Architect Mode Rules)
+    # Note: This is part of a two-file system where ~/.claude/CLAUDE.md 
+    # (or project root CLAUDE.md) directs Claude code to Architect Mode,
+    # and .orch/CLAUDE.md provides the specific enforcement rules.
+    orch_claude_md = """# Architect Mode — Active
+This project uses orch orchestration workflow.
+Claude is in READ-ONLY mode for all code files.
+
+## ⛔ HARD RULES
+1. NEVER use Edit, Write, MultiEdit on any file except
+   .orch/task-*.md
+2. NEVER fix code yourself — not even one line
+3. NEVER edit this file or ARCHITECTURE.md unless
+   user explicitly says so
+4. If you feel urge to write code → STOP
+   Write .orch/task-{name}.md instead
+
+## When user asks anything code-related:
+→ Write .orch/task-{name}.md
+→ Say: "готово → orch task-{name}"
+
+## Language
+- With user: Russian
+- Task files, reviews, commits: English only
+
+## Review protocol
+When user says "review task-{name}":
+1. Read .orch/{name}-status.md → get commit hash
+2. Run: git show {commit} --stat
+3. Run: git diff {commit}~1 {commit}
+4. Read: .orch/done/task-{name}.md
+5. Respond in chat:
+
+## Review: task-{name}
+✅ Done correctly
+❌ Problems
+⚠️ Deviations
+📝 Next step
+
+## Task format
+File: .orch/task-{name}.md
+---
+agent: backend | frontend | bugfix | tests | devops | docs
+role: |
+  {full role — agent has zero context from chat}
+task: |
+  {step by step instructions}
+files: {files to touch}
+context: |
+  {everything agent needs to know}
+criteria: |
+  {exact definition of done}
+---
+"""
+
+    # 2. ARCHITECTURE.md
     architecture_md = f"""# Architecture: {name}
 
 ## Overview
@@ -229,7 +350,7 @@ def init_project():
 (Claude fills this as work progresses)
 """
 
-    # 2. .antigravity/rules.md
+    # 3. .antigravity/rules.md
     rules_md = """# Agent rules
 
 These orchestration rules apply ONLY when user types "orch".
@@ -257,13 +378,13 @@ Ignore these rules completely unless the message is exactly "orch".
 Act as a normal Antigravity agent. These rules do not apply.
 """
 
-    # 3. .agents/README.md
+    # 4. .agents/README.md
     agents_readme_section = ""
     for agent in selected_agents:
         agents_readme_section += f"""## agent({agent})
 Role: {AGENT_ROLES[agent].splitlines()[0]}
 Commit prefix: agent({agent}): ...
-How to run: open Antigravity → type "orch task-{name}"
+How to run: open Antigravity → type "orch"
 
 """
 
@@ -271,29 +392,33 @@ How to run: open Antigravity → type "orch task-{name}"
 
 {agents_readme_section}"""
 
-    # 4. Create folders and files
+    # 5. Create folders and files
     dirs = [".orch", ".orch/done", ".agents", ".antigravity"]
     for d in dirs:
         os.makedirs(d, exist_ok=True)
 
+    Path("CLAUDE.md").write_text(claude_md)
     Path("ARCHITECTURE.md").write_text(architecture_md)
     Path(".antigravity/rules.md").write_text(rules_md)
     Path(".agents/README.md").write_text(agents_readme_md)
+    Path(".orch/CLAUDE.md").write_text(orch_claude_md)
 
     print(f"""
 ✅ Orchestra initialized for {name}!
 
 Created:
+  CLAUDE.md              ← Claude reads this automatically
   ARCHITECTURE.md        ← fill after first analysis
   .antigravity/rules.md  ← Antigravity agent instructions
   .agents/README.md      ← agent roles reference
   .orch/                 ← task queue (tasks, status, done)
+  .orch/CLAUDE.md        ← architect mode rules for Claude
 
 Next steps:
   1. Open Claude Code in this folder
   2. Claude will use Global Rules automatically
   3. Give Claude a task — it writes to .orch/task-{{name}}.md
-  4. Switch to Antigravity → type 'orch task-{{name}}'
+  4. Switch to Antigravity → type 'orch'
   5. Agent executes → writes .orch/{{name}}-status.md
   6. Claude reviews automatically
 """)
