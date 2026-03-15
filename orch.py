@@ -9,6 +9,15 @@ try:
 except ImportError:
     anthropic = None
 
+def load_env():
+    env_path = Path(".env")
+    if env_path.exists():
+        for line in env_path.read_text().splitlines():
+            line = line.strip()
+            if line and not line.startswith("#") and "=" in line:
+                key, _, value = line.partition("=")
+                os.environ.setdefault(key.strip(), value.strip())
+
 AGENT_ROLES = {
 # ... (rest of AGENT_ROLES remains the same, I'll use multi_replace for accuracy in a real scenario, but here I'm replacing the whole top and middle part)
     "frontend": """Mindset: User-first, performance-conscious, and aesthetic-driven.
@@ -72,7 +81,7 @@ def copy_to_clipboard(text: str):
 
 def get_tree_str(path, prefix="", exclude=None):
     if exclude is None:
-        exclude = {".git", "__pycache__", "node_modules", ".antigravity"}
+        exclude = {".git", "__pycache__", "node_modules", ".antigravity", ".orch"}
     
     output = []
     entries = sorted(os.listdir(path))
@@ -111,6 +120,7 @@ def tree_command():
     print("📋 Copied to clipboard")
 
 def compress_command():
+    load_env()
     if anthropic is None:
         print("❌ Error: 'anthropic' package not installed. Run: pip install anthropic")
         return
@@ -133,7 +143,7 @@ def compress_command():
     git_diff = run_git_cmd(["git", "diff", "HEAD~1", "HEAD"])
     
     # 4. Recent Tasks
-    done_tasks_path = Path(".tasks/done")
+    done_tasks_path = Path(".orch/done")
     recent_tasks_content = ""
     if done_tasks_path.exists():
         task_files = sorted(done_tasks_path.glob("*.md"), reverse=True)[:5]
@@ -174,8 +184,8 @@ RECENTLY COMPLETED TASKS:
     header = f"# Project Context Snapshot: {timestamp}\n\n"
     final_output = header + snapshot_text
     
-    os.makedirs(".tasks", exist_ok=True)
-    snapshot_file = Path(".tasks/context-snapshot.md")
+    os.makedirs(".orch", exist_ok=True)
+    snapshot_file = Path(".orch/context-snapshot.md")
     snapshot_file.write_text(final_output)
     
     print("\n" + "━" * 40)
@@ -203,73 +213,7 @@ def init_project():
         if not selected_agents:
             selected_agents = DEFAULT_AGENTS
 
-    # 1. CLAUDE.md
-    agents_section = ""
-    for agent in selected_agents:
-        agents_section += f"- agent({agent}): {AGENT_ROLES[agent].splitlines()[0]}\n"
-
-    claude_md = f"""# Project: {name}
-{description}
-
-## Stack
-{stack}
-
-## Workflow
-We are working in an AI-orchestrated development workflow.
-Claude acts as the architect and reviewer, not the primary
-code writer. Claude analyzes the project, maintains
-architectural consistency, and decomposes goals into clear
-tasks. These tasks are then implemented by specialized agents
-(Gemini agents in Antigravity) that act as execution workers.
-
-All work must follow a structured loop:
-1. Claude analyzes project context → proposes task plan
-2. Human reviews and approves or adjusts the plan
-3. Agent implements the task → modifies repository
-4. Claude reviews changes via git diff + repo state
-5. Human gives final approval → loop continues
-
-Claude must:
-- Write tasks to .tasks/next.md (never in chat)
-- Read .tasks/status.md automatically after agent finishes
-- Run git log --oneline -10 and git diff before every review
-- Identify which agent made changes by commit prefix
-
-Agents are responsible for implementation only.
-Human is the final authority over plan and code.
-
-## Review command
-When human says "review {task-id}":
-1. Read: .tasks/{task-id}-status.md
-2. Extract commit hash from the commit field
-3. Run: git show {commit}
-4. Run: git diff {commit}~1 {commit}
-5. Read: .tasks/done/{task-id}.md (original task)
-6. Compare what was asked vs what was done
-7. Respond with:
-
-## Review: {task-id}
-✅ What was done correctly
-❌ Issues found  
-⚠️ Deviations from original task
-📝 Next task recommendation
-
-## Agents
-{agents_section}
-## Task format (.tasks/next.md)
----
-task-id: {{unique task identifier}}
-agent: {{one of the agents}}
-role: {{full role description for the agent}}
-task: {{what to do}}
-files: {{files to modify}}
-context: {{all context the agent needs}}
-criteria: {{definition of done}}
----
----
-"""
-
-    # 2. ARCHITECTURE.md
+    # 1. ARCHITECTURE.md
     architecture_md = f"""# Architecture: {name}
 
 ## Overview
@@ -285,7 +229,7 @@ criteria: {{definition of done}}
 (Claude fills this as work progresses)
 """
 
-    # 3. .antigravity/rules.md
+    # 2. .antigravity/rules.md
     rules_md = """# Agent rules
 
 These orchestration rules apply ONLY when user types "orch".
@@ -293,33 +237,33 @@ In all other cases — behave as a normal Antigravity agent.
 Ignore these rules completely unless the message is exactly "orch".
 
 ## When user types "orch":
-1. Check if .tasks/next.md exists
-   If not — respond: "No task found in .tasks/next.md"
+1. Check if .orch/next.md exists
+   If not — respond: "No task found in .orch/next.md"
 2. Read fields: task-id, agent, role, task, files, context, criteria
 3. Adopt the role from the `role` field
 4. Execute the task
 5. Commit: git commit -m "agent({agent}): {task}"
-6. Write result to .tasks/{task-id}-status.md:
+6. Write result to .orch/{task-id}-status.md:
    task-id: {task-id}
    agent: {agent}
    commit: $(git rev-parse HEAD)
    status: done
    summary: what was done
    files_changed: list of files
-7. Move .tasks/next.md → .tasks/done/{task-id}.md
-8. Respond: "✅ Done. Review result in .tasks/{task-id}-status.md"
+7. Move .orch/next.md → .orch/done/{task-id}.md
+8. Respond: "✅ Done. Review result in .orch/{task-id}-status.md"
 
 ## All other messages:
 Act as a normal Antigravity agent. These rules do not apply.
 """
 
-    # 4. .agents/README.md
+    # 3. .agents/README.md
     agents_readme_section = ""
     for agent in selected_agents:
         agents_readme_section += f"""## agent({agent})
 Role: {AGENT_ROLES[agent].splitlines()[0]}
 Commit prefix: agent({agent}): ...
-How to run: open Antigravity → type "go"
+How to run: open Antigravity → type "orch task-{name}"
 
 """
 
@@ -327,12 +271,11 @@ How to run: open Antigravity → type "go"
 
 {agents_readme_section}"""
 
-    # 5. Create folders and files
-    dirs = [".tasks", ".tasks/done", ".agents", ".antigravity"]
+    # 4. Create folders and files
+    dirs = [".orch", ".orch/done", ".agents", ".antigravity"]
     for d in dirs:
         os.makedirs(d, exist_ok=True)
 
-    Path("CLAUDE.md").write_text(claude_md)
     Path("ARCHITECTURE.md").write_text(architecture_md)
     Path(".antigravity/rules.md").write_text(rules_md)
     Path(".agents/README.md").write_text(agents_readme_md)
@@ -341,18 +284,17 @@ How to run: open Antigravity → type "go"
 ✅ Orchestra initialized for {name}!
 
 Created:
-  CLAUDE.md              ← Claude reads this automatically
   ARCHITECTURE.md        ← fill after first analysis
   .antigravity/rules.md  ← Antigravity agent instructions
   .agents/README.md      ← agent roles reference
-  .tasks/                ← task queue
+  .orch/                 ← task queue (tasks, status, done)
 
 Next steps:
   1. Open Claude Code in this folder
-  2. Claude will read CLAUDE.md automatically
-  3. Give Claude a task — it writes to .tasks/next.md
-  4. Switch to Antigravity → type 'go'
-  5. Agent executes → writes .tasks/status.md
+  2. Claude will use Global Rules automatically
+  3. Give Claude a task — it writes to .orch/task-{{name}}.md
+  4. Switch to Antigravity → type 'orch task-{{name}}'
+  5. Agent executes → writes .orch/{{name}}-status.md
   6. Claude reviews automatically
 """)
 
